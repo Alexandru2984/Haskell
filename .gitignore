@@ -1,0 +1,13 @@
+.env
+logs/
+data/
+dist-newstyle/
+.stack-work/
+.cabal-sandbox/
+cabal.project.local
+*.hi
+*.o
+*.dyn_hi
+*.dyn_o
+*~
+.DS_Store

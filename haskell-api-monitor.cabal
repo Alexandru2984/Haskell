@@ -1,0 +1,86 @@
+cabal-version: 3.0
+name:          haskell-api-monitor
+version:       0.1.0.0
+synopsis:      Haskell Type-Safe API Contract Monitor
+license:       MIT
+author:        alex_mihai984@yahoo.com
+maintainer:    alex_mihai984@yahoo.com
+build-type:    Simple
+
+common warnings
+    ghc-options: -Wall
+
+library
+    import:           warnings
+    exposed-modules:
+        App.Config
+        App.Types
+        App.Server
+        App.Routes
+        App.Html
+        App.Db
+        App.Migrations
+        App.Endpoint
+        App.Contract
+        App.Validator
+        App.Checker
+        App.Scheduler
+        App.Security.UrlSafety
+        App.Reports
+        App.Logging
+    build-depends:
+        base ^>=4.17.2.0,
+        servant-server,
+        servant-lucid,
+        lucid,
+        aeson,
+        text,
+        bytestring,
+        time,
+        postgresql-simple,
+        http-client,
+        http-client-tls,
+        http-types,
+        wai,
+        wai-cors,
+        wai-extra,
+        warp,
+        unordered-containers,
+        vector,
+        scientific,
+        dotenv,
+        uuid,
+        network-uri
+    hs-source-dirs:   src
+    default-language: Haskell2010
+
+executable api-contract-monitor
+    import:           warnings
+    main-is:          Main.hs
+    ghc-options:      -threaded
+    build-depends:
+        base ^>=4.17.2.0,
+        haskell-api-monitor
+    hs-source-dirs:   app
+    default-language: Haskell2010
+
+test-suite api-contract-monitor-test
+    import:           warnings
+    default-language: Haskell2010
+    ghc-options:      -threaded
+    type:             exitcode-stdio-1.0
+    hs-source-dirs:   test
+    main-is:          Spec.hs
+    other-modules:
+        App.ContractSpec
+        App.ValidatorSpec
+        App.UrlSafetySpec
+        App.CheckerSpec
+        App.ScoringSpec
+    build-depends:
+        base ^>=4.17.2.0,
+        hspec,
+        QuickCheck,
+        aeson,
+        text,
+        haskell-api-monitor
