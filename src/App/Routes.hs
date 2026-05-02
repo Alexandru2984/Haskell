@@ -10,6 +10,7 @@ import App.Types
 
 type API = 
        Get '[HTML] (Html ())
+  :<|> "endpoints" :> Get '[HTML] (Html ())
   :<|> "api" :> "endpoints" :> Get '[JSON] [Endpoint]
 
 api :: Proxy API

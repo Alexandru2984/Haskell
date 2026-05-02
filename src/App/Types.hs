@@ -6,6 +6,8 @@ import Data.Aeson
 import GHC.Generics
 import Data.Time (UTCTime)
 import qualified Data.Text as T
+import Database.PostgreSQL.Simple.FromRow
+import Database.PostgreSQL.Simple.ToRow
 
 data Endpoint = Endpoint
     { endpointId :: Int
@@ -20,6 +22,13 @@ data Endpoint = Endpoint
 
 instance ToJSON Endpoint
 instance FromJSON Endpoint
+
+instance FromRow Endpoint where
+    fromRow = Endpoint <$> field <*> field <*> field <*> field <*> field <*> field <*> field <*> field
+
+instance ToRow Endpoint where
+    toRow (Endpoint id' name proj url method status enabled contract) = 
+        toRow (id', name, proj, url, method, status, enabled, contract)
 
 data CheckResult = CheckResult
     { checkId :: Int
