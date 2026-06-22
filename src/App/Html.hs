@@ -3,7 +3,10 @@ module App.Html where
 
 import Lucid
 import App.Types
+import Data.Aeson (encode)
 import qualified Data.Text as T
+import qualified Data.Text.Lazy as TL
+import qualified Data.Text.Lazy.Encoding as TLE
 
 layout :: Html () -> Html ()
 layout content = html_ $ do
@@ -43,8 +46,19 @@ css = "body { margin: 0; font-family: system-ui, sans-serif; background: #0f172a
       \.status-ok { background: rgba(16, 185, 129, 0.2); color: #34d399; }\n\
       \.status-fail { background: rgba(239, 68, 68, 0.2); color: #f87171; }\n\
       \.status-unknown { background: rgba(148, 163, 184, 0.2); color: #cbd5e1; }\n\
-      \.btn { background: #0ea5e9; color: white; border: none; padding: 0.5rem 1rem; border-radius: 0.375rem; cursor: pointer; font-weight: 500; transition: background 0.2s; text-decoration: none; }\n\
-      \.btn:hover { background: #0284c7; }"
+      \.btn { background: #0ea5e9; color: white; border: none; padding: 0.5rem 1rem; border-radius: 0.375rem; cursor: pointer; font-weight: 500; transition: background 0.2s; text-decoration: none; display: inline-block; }\n\
+      \.btn:hover { background: #0284c7; }\n\
+      \.btn-sm { padding: 0.25rem 0.6rem; font-size: 0.75rem; }\n\
+      \.btn-secondary { background: #475569; }\n\
+      \.btn-secondary:hover { background: #334155; }\n\
+      \.btn-danger { background: #b91c1c; }\n\
+      \.btn-danger:hover { background: #991b1b; }\n\
+      \form.card-form { background: #1e293b; padding: 1.5rem; border-radius: 0.5rem; border: 1px solid #334155; max-width: 640px; }\n\
+      \.form-row { display: flex; flex-direction: column; margin-bottom: 1rem; }\n\
+      \.form-row label { font-size: 0.8rem; color: #94a3b8; margin-bottom: 0.35rem; text-transform: uppercase; letter-spacing: 0.03em; }\n\
+      \.form-row input, .form-row select, .form-row textarea { background: #0f172a; border: 1px solid #334155; color: #f3f4f6; padding: 0.6rem 0.75rem; border-radius: 0.375rem; font-size: 0.95rem; font-family: inherit; }\n\
+      \.form-row textarea { min-height: 140px; font-family: monospace; }\n\
+      \.inline-form { display: inline; }"
 
 dashboardHtml :: [Endpoint] -> Html ()
 dashboardHtml endpoints = layout $ do
@@ -98,4 +112,50 @@ renderEndpointRow e = tr_ $ do
             (-1) -> span_ [class_ "status-badge status-fail"] "Failing"
             _    -> span_ [class_ "status-badge status-unknown"] "Unknown"
     td_ $ do
-        button_ [class_ "btn", style_ "background: #475569; padding: 0.25rem 0.5rem; font-size: 0.75rem;"] "Edit"
+        let eid = T.pack (show (endpointId e))
+        a_ [href_ ("/endpoints/" <> eid <> "/edit"), class_ "btn btn-sm btn-secondary"] "Edit"
+        form_ [ method_ "post", action_ ("/endpoints/" <> eid <> "/delete")
+              , class_ "inline-form", style_ "margin-left: 0.5rem;"
+              , onsubmit_ "return confirm('Delete this endpoint?');" ] $
+            button_ [type_ "submit", class_ "btn btn-sm btn-danger"] "Delete"
+
+-- | Add / edit endpoint form. 'Nothing' renders a blank create form.
+endpointFormPage :: Maybe Endpoint -> Html ()
+endpointFormPage mep = layout $ do
+    div_ [class_ "header"] $
+        h2_ (toHtml title)
+    form_ [method_ "post", action_ action, class_ "card-form"] $ do
+        textField  "Name"    "name"    (maybe "" endpointName mep)
+        textField  "Project" "project" (maybe "" endpointProject mep)
+        textField  "URL"     "url"     (maybe "" endpointUrl mep)
+        methodField (maybe "GET" endpointMethod mep)
+        contractField (maybe "{\n  \"type\": \"object\",\n  \"allow_extra_fields\": true\n}"
+                             (TL.toStrict . TLE.decodeUtf8 . encode . endpointContract) mep)
+        div_ [class_ "form-row"] $ do
+            button_ [type_ "submit", class_ "btn"] (toHtml saveLabel)
+            a_ [href_ "/endpoints", class_ "btn btn-secondary", style_ "margin-left: 0.5rem;"] "Cancel"
+  where
+    title     = maybe "Add Endpoint" (const "Edit Endpoint") mep :: T.Text
+    saveLabel = maybe "Create" (const "Save changes") mep :: T.Text
+    action    = case mep of
+        Just e  -> "/endpoints/" <> T.pack (show (endpointId e)) <> "/update"
+        Nothing -> "/endpoints/create"
+
+textField :: T.Text -> T.Text -> T.Text -> Html ()
+textField label name val = div_ [class_ "form-row"] $ do
+    label_ (toHtml label)
+    input_ [type_ "text", name_ name, value_ val, required_ "required"]
+
+methodField :: T.Text -> Html ()
+methodField current = div_ [class_ "form-row"] $ do
+    label_ "Method"
+    select_ [name_ "method"] $
+        mapM_ (\m -> if m == current
+                        then option_ [value_ m, selected_ "selected"] (toHtml m)
+                        else option_ [value_ m] (toHtml m))
+              ["GET", "POST", "PUT", "DELETE", "HEAD", "PATCH"]
+
+contractField :: T.Text -> Html ()
+contractField val = div_ [class_ "form-row"] $ do
+    label_ "Contract (JSON)"
+    textarea_ [name_ "contract"] (toHtml val)

@@ -52,6 +52,7 @@ library
         scientific,
         dotenv,
         uuid,
+        http-api-data,
         network,
         network-uri
     hs-source-dirs:   src
