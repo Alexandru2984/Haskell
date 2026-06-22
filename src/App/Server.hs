@@ -2,7 +2,9 @@
 module App.Server where
 
 import Control.Monad.IO.Class (liftIO)
-import Network.Wai.Handler.Warp (run)
+import Network.Wai.Handler.Warp
+    (runSettings, defaultSettings, setPort, setHost, setGracefulShutdownTimeout)
+import Data.String (fromString)
 import Servant
 import Database.PostgreSQL.Simple
 import Data.Pool (Pool, withResource)
@@ -43,7 +45,9 @@ runServer = do
 
     startScheduler cfg pool
 
-    let port = appPort cfg
-    logInfo $ "Listening on port " ++ show port
+    let settings = setPort (appPort cfg)
+                 $ setHost (fromString (appHost cfg))
+                 $ setGracefulShutdownTimeout (Just 10) defaultSettings
+    logInfo $ "Listening on " ++ appHost cfg ++ ":" ++ show (appPort cfg)
 
-    run port (app pool)
+    runSettings settings (app pool)
