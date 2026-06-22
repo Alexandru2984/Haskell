@@ -38,6 +38,7 @@ library
         bytestring,
         time,
         postgresql-simple,
+        resource-pool,
         http-client,
         http-client-tls,
         http-types,
