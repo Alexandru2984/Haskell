@@ -39,7 +39,7 @@ runOne cfg manager pool sem ep =
             withResource pool $ \conn -> do
                 insertCheckResult conn cr
                 setEndpointStatus conn (endpointId ep)
-                    (if checkPassed cr then 1 else -1)
+                    (if checkPassed cr then Passing else Failing)
         case result of
             Left (e :: SomeException) ->
                 logError $ "Check failed for endpoint "

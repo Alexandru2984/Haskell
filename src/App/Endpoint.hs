@@ -48,8 +48,8 @@ deleteEndpoint :: Connection -> Int -> IO ()
 deleteEndpoint conn eid =
     void $ execute conn "DELETE FROM endpoints WHERE id = ?" (Only eid)
 
--- | Persisted health: 1 = passing, -1 = failing, 0 = unknown.
-setEndpointStatus :: Connection -> Int -> Int -> IO ()
+-- | Persist the latest health of an endpoint.
+setEndpointStatus :: Connection -> Int -> Status -> IO ()
 setEndpointStatus conn eid st =
     void $ execute conn "UPDATE endpoints SET status = ? WHERE id = ?" (st, eid)
 

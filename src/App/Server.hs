@@ -24,7 +24,7 @@ import App.Config
 import App.Db
 import App.Migrations
 import App.Routes
-import App.Types (Endpoint(..), Health(..))
+import App.Types (Endpoint(..), Health(..), Status(..))
 import App.Html
 import App.Endpoint
 import App.Reports (globalStats, recentIncidents)
@@ -56,8 +56,8 @@ server pool =
     metricsH = withResource pool $ \c -> do
         eps <- getEndpoints c
         (checks, passed, avg) <- globalStats c
-        let healthy = length (filter (\e -> endpointStatus e == 1) eps)
-            failing = length (filter (\e -> endpointStatus e == (-1)) eps)
+        let healthy = length (filter (\e -> endpointStatus e == Passing) eps)
+            failing = length (filter (\e -> endpointStatus e == Failing) eps)
         return (renderMetrics (length eps) healthy failing checks passed avg)
 
 renderMetrics :: Int -> Int -> Int -> Int -> Int -> Maybe Double -> T.Text

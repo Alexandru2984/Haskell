@@ -8,6 +8,34 @@ import Data.Time (UTCTime)
 import qualified Data.Text as T
 import Database.PostgreSQL.Simple.FromRow
 import Database.PostgreSQL.Simple.ToRow
+import Database.PostgreSQL.Simple.FromField (FromField(..), Conversion)
+import Database.PostgreSQL.Simple.ToField (ToField(..))
+
+-- | Health of a monitored endpoint, stored in the DB as an integer.
+data Status = Unknown | Passing | Failing
+    deriving (Show, Eq, Generic)
+
+statusToInt :: Status -> Int
+statusToInt Unknown = 0
+statusToInt Passing = 1
+statusToInt Failing = -1
+
+statusFromInt :: Int -> Status
+statusFromInt 1    = Passing
+statusFromInt (-1) = Failing
+statusFromInt _    = Unknown
+
+instance FromField Status where
+    fromField f mb = statusFromInt <$> (fromField f mb :: Conversion Int)
+
+instance ToField Status where
+    toField = toField . statusToInt
+
+instance ToJSON Status where
+    toJSON = toJSON . statusToInt
+
+instance FromJSON Status where
+    parseJSON = fmap statusFromInt . parseJSON
 
 data Endpoint = Endpoint
     { endpointId :: Int
@@ -15,7 +43,7 @@ data Endpoint = Endpoint
     , endpointProject :: T.Text
     , endpointUrl :: T.Text
     , endpointMethod :: T.Text
-    , endpointStatus :: Int
+    , endpointStatus :: Status
     , endpointEnabled :: Bool
     , endpointContract :: Value
     } deriving (Show, Generic)

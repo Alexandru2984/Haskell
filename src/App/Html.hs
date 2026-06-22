@@ -77,8 +77,8 @@ dashboardHtml endpoints (totalChecks, passedChecks, avgLatency) = layout $ do
     h3_ [style_ "margin-bottom: 1rem;"] "Recent Endpoints"
     endpointsTable endpoints
   where
-    healthy = length (filter (\e -> endpointStatus e == 1) endpoints)
-    failing = length (filter (\e -> endpointStatus e == (-1)) endpoints)
+    healthy = length (filter (\e -> endpointStatus e == Passing) endpoints)
+    failing = length (filter (\e -> endpointStatus e == Failing) endpoints)
     uptimeStr
         | totalChecks == 0 = "—"
         | otherwise =
@@ -153,9 +153,9 @@ renderEndpointRow e = tr_ $ do
     td_ (toHtml $ endpointMethod e)
     td_ $ do
         case endpointStatus e of
-            1    -> span_ [class_ "status-badge status-ok"] "Passing"
-            (-1) -> span_ [class_ "status-badge status-fail"] "Failing"
-            _    -> span_ [class_ "status-badge status-unknown"] "Unknown"
+            Passing -> span_ [class_ "status-badge status-ok"] "Passing"
+            Failing -> span_ [class_ "status-badge status-fail"] "Failing"
+            Unknown -> span_ [class_ "status-badge status-unknown"] "Unknown"
     td_ $ do
         let eid = T.pack (show (endpointId e))
         a_ [href_ ("/endpoints/" <> eid <> "/edit"), class_ "btn btn-sm btn-secondary"] "Edit"
