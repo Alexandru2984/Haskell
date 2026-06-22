@@ -30,6 +30,7 @@ library
         App.Logging
     build-depends:
         base ^>=4.17.2.0,
+        async,
         servant-server,
         servant-lucid,
         lucid,
