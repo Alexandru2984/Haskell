@@ -24,6 +24,7 @@ import App.Config
 import App.Db
 import App.Migrations
 import App.Routes
+import App.Types (Endpoint(..), Health(..))
 import App.Html
 import App.Endpoint
 import App.Reports (globalStats, recentIncidents)
@@ -40,12 +41,41 @@ server pool =
     :<|> updateH pool
     :<|> deleteH pool
     :<|> liftIO incidentsH
+    :<|> liftIO healthH
+    :<|> liftIO metricsH
     :<|> liftIO (withResource pool getEndpoints)
   where
     dashboardH = withResource pool $ \c ->
         dashboardHtml <$> getEndpoints c <*> globalStats c
     incidentsH = withResource pool $ \c ->
         incidentsHtml <$> recentIncidents c 50
+    healthH = withResource pool $ \c -> do
+        eps <- getEndpoints c
+        (checks, _, _) <- globalStats c
+        return (Health "ok" (length eps) checks)
+    metricsH = withResource pool $ \c -> do
+        eps <- getEndpoints c
+        (checks, passed, avg) <- globalStats c
+        let healthy = length (filter (\e -> endpointStatus e == 1) eps)
+            failing = length (filter (\e -> endpointStatus e == (-1)) eps)
+        return (renderMetrics (length eps) healthy failing checks passed avg)
+
+renderMetrics :: Int -> Int -> Int -> Int -> Int -> Maybe Double -> T.Text
+renderMetrics total healthy failing checks passed avg = T.unlines
+    [ "# HELP api_monitor_endpoints_total Number of configured endpoints."
+    , "# TYPE api_monitor_endpoints_total gauge"
+    , "api_monitor_endpoints_total "   <> tshow total
+    , "api_monitor_endpoints_healthy " <> tshow healthy
+    , "api_monitor_endpoints_failing " <> tshow failing
+    , "# HELP api_monitor_checks_total Total checks recorded."
+    , "# TYPE api_monitor_checks_total counter"
+    , "api_monitor_checks_total "  <> tshow checks
+    , "api_monitor_checks_passed " <> tshow passed
+    , "api_monitor_check_latency_avg_ms " <> maybe "0" (tshow . (round :: Double -> Int)) avg
+    ]
+  where
+    tshow :: Show a => a -> T.Text
+    tshow = T.pack . show
 
 editH :: Pool Connection -> Int -> Handler (Html ())
 editH pool eid = do

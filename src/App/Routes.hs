@@ -41,6 +41,8 @@ type API =
         :> ReqBody '[FormUrlEncoded] EndpointForm :> Verb 'POST 303 '[HTML] Redirect
   :<|> "endpoints" :> Capture "id" Int :> "delete" :> Verb 'POST 303 '[HTML] Redirect
   :<|> "incidents" :> Get '[HTML] (Html ())
+  :<|> "health" :> Get '[JSON] Health
+  :<|> "metrics" :> Get '[PlainText] T.Text
   :<|> "api" :> "endpoints" :> Get '[JSON] [Endpoint]
 
 api :: Proxy API

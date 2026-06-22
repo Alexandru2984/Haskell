@@ -45,3 +45,16 @@ instance FromJSON CheckResult
 
 instance FromRow CheckResult where
     fromRow = CheckResult <$> field <*> field <*> field <*> field <*> field <*> field <*> field
+
+data Health = Health
+    { healthStatus    :: T.Text
+    , healthEndpoints :: Int
+    , healthChecks    :: Int
+    } deriving (Show, Generic)
+
+instance ToJSON Health where
+    toJSON h = object
+        [ "status"    .= healthStatus h
+        , "endpoints" .= healthEndpoints h
+        , "checks"    .= healthChecks h
+        ]
