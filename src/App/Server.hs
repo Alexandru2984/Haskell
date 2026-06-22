@@ -20,19 +20,26 @@ import App.Migrations
 import App.Routes
 import App.Html
 import App.Endpoint
+import App.Reports (globalStats, recentIncidents)
 import App.Scheduler
 import App.Logging
 
 server :: Pool Connection -> Server API
 server pool =
-         liftIO (dashboardHtml <$> withResource pool getEndpoints)
+         liftIO dashboardH
     :<|> liftIO (endpointsHtml <$> withResource pool getEndpoints)
     :<|> return (endpointFormPage Nothing)
     :<|> editH pool
     :<|> createH pool
     :<|> updateH pool
     :<|> deleteH pool
+    :<|> liftIO incidentsH
     :<|> liftIO (withResource pool getEndpoints)
+  where
+    dashboardH = withResource pool $ \c ->
+        dashboardHtml <$> getEndpoints c <*> globalStats c
+    incidentsH = withResource pool $ \c ->
+        incidentsHtml <$> recentIncidents c 50
 
 editH :: Pool Connection -> Int -> Handler (Html ())
 editH pool eid = do

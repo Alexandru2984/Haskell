@@ -40,6 +40,7 @@ type API =
   :<|> "endpoints" :> Capture "id" Int :> "update"
         :> ReqBody '[FormUrlEncoded] EndpointForm :> Verb 'POST 303 '[HTML] Redirect
   :<|> "endpoints" :> Capture "id" Int :> "delete" :> Verb 'POST 303 '[HTML] Redirect
+  :<|> "incidents" :> Get '[HTML] (Html ())
   :<|> "api" :> "endpoints" :> Get '[JSON] [Endpoint]
 
 api :: Proxy API

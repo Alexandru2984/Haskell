@@ -3,7 +3,8 @@ module App.Html where
 
 import Lucid
 import App.Types
-import Data.Aeson (encode)
+import Data.Aeson (encode, Value)
+import Data.Time (UTCTime)
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.Encoding as TLE
@@ -60,25 +61,70 @@ css = "body { margin: 0; font-family: system-ui, sans-serif; background: #0f172a
       \.form-row textarea { min-height: 140px; font-family: monospace; }\n\
       \.inline-form { display: inline; }"
 
-dashboardHtml :: [Endpoint] -> Html ()
-dashboardHtml endpoints = layout $ do
+-- | Dashboard. The triple is (total checks, passed checks, avg latency ms).
+dashboardHtml :: [Endpoint] -> (Int, Int, Maybe Double) -> Html ()
+dashboardHtml endpoints (totalChecks, passedChecks, avgLatency) = layout $ do
     div_ [class_ "header"] $ do
         h2_ "Dashboard Overview"
         a_ [href_ "/endpoints/new", class_ "btn"] "+ Add Endpoint"
-    
+
     div_ [class_ "card-grid"] $ do
-        div_ [class_ "card"] $ do
-            div_ [class_ "card-title"] "Total Monitored"
-            div_ [class_ "card-value"] (toHtml $ show $ length endpoints)
-        div_ [class_ "card"] $ do
-            div_ [class_ "card-title"] "Healthy"
-            div_ [class_ "card-value", style_ "color: #34d399;"] (toHtml $ show $ length (filter (\e -> endpointStatus e == 1) endpoints))
-        div_ [class_ "card"] $ do
-            div_ [class_ "card-title"] "Failing"
-            div_ [class_ "card-value", style_ "color: #f87171;"] (toHtml $ show $ length (filter (\e -> endpointStatus e == (-1)) endpoints))
+        statCard "Total Monitored" (T.pack (show (length endpoints))) Nothing
+        statCard "Healthy"  (T.pack (show healthy)) (Just "#34d399")
+        statCard "Failing"  (T.pack (show failing)) (Just "#f87171")
+        statCard "Uptime"   uptimeStr  (Just "#38bdf8")
+        statCard "Avg Latency" latencyStr Nothing
 
     h3_ [style_ "margin-bottom: 1rem;"] "Recent Endpoints"
     endpointsTable endpoints
+  where
+    healthy = length (filter (\e -> endpointStatus e == 1) endpoints)
+    failing = length (filter (\e -> endpointStatus e == (-1)) endpoints)
+    uptimeStr
+        | totalChecks == 0 = "—"
+        | otherwise =
+            T.pack (show (round (100 * fromIntegral passedChecks
+                                     / fromIntegral totalChecks :: Double) :: Int)) <> "%"
+    latencyStr = case avgLatency of
+        Nothing -> "—"
+        Just l  -> T.pack (show (round l :: Int)) <> " ms"
+
+statCard :: T.Text -> T.Text -> Maybe T.Text -> Html ()
+statCard title val mColor = div_ [class_ "card"] $ do
+    div_ [class_ "card-title"] (toHtml title)
+    case mColor of
+        Just c  -> div_ [class_ "card-value", style_ ("color: " <> c <> ";")] (toHtml val)
+        Nothing -> div_ [class_ "card-value"] (toHtml val)
+
+-- | Incident feed: rows are (name, url, status, latency_ms, time, errors).
+incidentsHtml :: [(T.Text, T.Text, Int, Int, UTCTime, Value)] -> Html ()
+incidentsHtml [] = layout $ do
+    div_ [class_ "header"] $ h2_ "Incidents"
+    p_ [style_ "color: #94a3b8;"] "No incidents recorded. All checks have passed so far."
+incidentsHtml rows = layout $ do
+    div_ [class_ "header"] $ h2_ "Incidents"
+    div_ [class_ "table-container"] $ table_ $ do
+        thead_ $ tr_ $ do
+            th_ "Endpoint"
+            th_ "URL"
+            th_ "Status"
+            th_ "Latency"
+            th_ "When"
+            th_ "Errors"
+        tbody_ $ mapM_ incidentRow rows
+
+incidentRow :: (T.Text, T.Text, Int, Int, UTCTime, Value) -> Html ()
+incidentRow (name, url, status, latency, time, errs) = tr_ $ do
+    td_ (toHtml name)
+    td_ [style_ "color: #94a3b8; font-family: monospace; font-size: 0.85em;"] (toHtml url)
+    td_ $ span_ [class_ "status-badge status-fail"] (toHtml (T.pack (show status)))
+    td_ (toHtml (T.pack (show latency) <> " ms"))
+    td_ [style_ "color: #94a3b8;"] (toHtml (T.pack (show time)))
+    td_ [style_ "font-family: monospace; font-size: 0.8em; color: #f87171;"]
+        (toHtml (valueToText errs))
+
+valueToText :: Value -> T.Text
+valueToText = TL.toStrict . TLE.decodeUtf8 . encode
 
 endpointsHtml :: [Endpoint] -> Html ()
 endpointsHtml endpoints = layout $ do
