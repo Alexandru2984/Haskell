@@ -7,7 +7,13 @@ import App.Security.UrlSafety
 spec :: Spec
 spec = do
   describe "UrlSafety" $ do
-    it "blocks private IPs" $ do
-      isSafeUrl False "http://127.0.0.1/api" `shouldBe` False
-    it "allows public IPs" $ do
-      isSafeUrl False "http://google.com/api" `shouldBe` True
+    it "blocks loopback" $
+      isSafeUrl False "http://127.0.0.1/api" `shouldReturn` False
+    it "blocks the cloud metadata address" $
+      isSafeUrl False "http://169.254.169.254/latest/meta-data" `shouldReturn` False
+    it "blocks IPv6 loopback" $
+      isSafeUrl False "http://[::1]/api" `shouldReturn` False
+    it "allows a public IP literal" $
+      isSafeUrl False "http://1.1.1.1/api" `shouldReturn` True
+    it "rejects non-http schemes" $
+      isSafeUrl False "file:///etc/passwd" `shouldReturn` False

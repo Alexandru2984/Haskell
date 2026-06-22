@@ -16,8 +16,8 @@ import App.Security.UrlSafety (isSafeUrl)
 checkEndpoint :: Bool -> Manager -> Endpoint -> IO CheckResult
 checkEndpoint allowPrivate manager endpoint = do
     start <- getCurrentTime
-    
-    if not (isSafeUrl allowPrivate (endpointUrl endpoint))
+    safe <- isSafeUrl allowPrivate (endpointUrl endpoint)
+    if not safe
         then return $ CheckResult 0 (endpointId endpoint) start 0 0 False (toJSON [ValidationError "$" "Unsafe or private URL"])
         else do
             req <- parseRequest (T.unpack $ endpointUrl endpoint)
