@@ -15,7 +15,6 @@ layout content = html_ $ do
         title_ "Haskell API Monitor"
         meta_ [charset_ "utf-8"]
         meta_ [name_ "viewport", content_ "width=device-width, initial-scale=1"]
-        script_ [src_ "https://unpkg.com/htmx.org@1.9.12"] ("" :: T.Text)
         style_ css
     body_ $ do
         div_ [class_ "sidebar"] $ do

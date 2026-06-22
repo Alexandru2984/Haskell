@@ -6,6 +6,7 @@ import qualified Data.Aeson.KeyMap as KM
 import qualified Data.Aeson.Key as K
 import qualified Data.Text as T
 import qualified Data.Vector as V
+import Data.Scientific (isInteger)
 
 data ValidationError = ValidationError
     { errorPath :: T.Text
@@ -49,7 +50,9 @@ validateNode path (Object e) actual =
             Number _ -> []
             _ -> [ValidationError path ("Expected number, got " <> valueType actual)]
         Just (String "integer") -> case actual of
-            Number n -> [] -- Simplified, properly we should check if integer
+            Number n
+                | isInteger n -> []
+                | otherwise   -> [ValidationError path "Expected integer, got fractional number"]
             _ -> [ValidationError path ("Expected integer, got " <> valueType actual)]
         Just (String "boolean") -> case actual of
             Bool _ -> []
