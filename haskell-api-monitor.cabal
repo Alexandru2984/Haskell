@@ -78,11 +78,11 @@ test-suite api-contract-monitor-test
         App.ValidatorSpec
         App.UrlSafetySpec
         App.CheckerSpec
-        App.ScoringSpec
     build-depends:
         base ^>=4.17.2.0,
         hspec,
         QuickCheck,
         aeson,
         text,
+        http-client,
         haskell-api-monitor
