@@ -42,3 +42,6 @@ data CheckResult = CheckResult
 
 instance ToJSON CheckResult
 instance FromJSON CheckResult
+
+instance FromRow CheckResult where
+    fromRow = CheckResult <$> field <*> field <*> field <*> field <*> field <*> field <*> field
