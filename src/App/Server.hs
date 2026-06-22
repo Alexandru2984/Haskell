@@ -11,8 +11,14 @@ import Lucid (Html)
 import Database.PostgreSQL.Simple
 import Data.Pool (Pool, withResource)
 import Data.Aeson (Value, eitherDecodeStrict)
+import Data.Bits (xor, (.|.))
+import Data.List (foldl')
+import Network.Wai (Middleware)
+import Network.Wai.Middleware.HttpAuth (basicAuth)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
+import qualified Data.ByteString as BS
+import qualified Data.ByteString.Char8 as BC
 import qualified Data.ByteString.Lazy.Char8 as LBS
 import App.Config
 import App.Db
@@ -74,8 +80,25 @@ parseContractOrErr txt =
         Right v -> return v
         Left e  -> throwError err400 { errBody = LBS.pack ("Invalid contract JSON: " ++ e) }
 
-app :: Pool Connection -> Application
-app pool = serve api (server pool)
+app :: AppConfig -> Pool Connection -> Application
+app cfg pool = authMiddleware cfg (serve api (server pool))
+
+-- | Gate the whole app behind HTTP Basic auth when enabled in config.
+authMiddleware :: AppConfig -> Middleware
+authMiddleware cfg
+    | basicAuthEnabled cfg = basicAuth checkCreds "API Monitor"
+    | otherwise            = id
+  where
+    expectedUser = BC.pack (basicAuthUser cfg)
+    expectedPass = BC.pack (basicAuthPass cfg)
+    checkCreds u p = return (constEq u expectedUser && constEq p expectedPass)
+
+-- | Constant-time bytestring equality to avoid leaking length-prefix matches
+-- via response timing.
+constEq :: BS.ByteString -> BS.ByteString -> Bool
+constEq a b =
+    BS.length a == BS.length b
+    && 0 == foldl' (\acc (x, y) -> acc .|. xor x y) 0 (BS.zip a b)
 
 runServer :: IO ()
 runServer = do
@@ -101,4 +124,4 @@ runServer = do
                  $ setGracefulShutdownTimeout (Just 10) defaultSettings
     logInfo $ "Listening on " ++ appHost cfg ++ ":" ++ show (appPort cfg)
 
-    runSettings settings (app pool)
+    runSettings settings (app cfg pool)
