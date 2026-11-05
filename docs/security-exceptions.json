@@ -1,0 +1,6 @@
+{
+  "HSEC-2023-0007": {
+    "package": "base",
+    "reason": "The affected Numeric.readFloat function is not used by application code; JSON number parsing uses patched aeson/scientific. No generic base fix exists. Reassess if numeric parsing changes."
+  }
+}

@@ -24,3 +24,12 @@ Each coherent, verified stage gets a separate commit. Changes to the running ser
 - Scheduled reports, signed status badges, API tokens with scopes, audit trail and team invitations.
 
 These require product/access decisions and supporting infrastructure; listing them is not a claim that they are implemented.
+
+## Completed implementation stages
+
+- `6be6adf`: application/egress security, patched parsing dependencies and 35 Hspec examples.
+- `8c6f99c`: bounded/recovering scheduler, atomic/versioned check persistence, indexes and windowed reporting.
+- `868cf93`: responsive workspace, detail/history, manual checks, pause/resume, filters, CSV and interactive contract playground.
+- CI/release stage: pinned dependencies/actions, isolated HTTP/browser fixtures, advisory comparison, backup/rollback instructions and indexing rules for the private product.
+
+The broader roadmap above remains future product work, not part of these completed implementation claims.

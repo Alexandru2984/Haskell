@@ -1,9 +1,9 @@
-#!/bin/bash
-# Find an available port starting from 3060
-PORT=3060
-while netstat -an | grep -q ":$PORT "; do
-  PORT=$((PORT + 1))
-done
-echo "Found available port: $PORT"
-sed -i "s/^APP_PORT=.*/APP_PORT=$PORT/" /home/micu/haskell/.env
-echo $PORT
+#!/usr/bin/env bash
+set -euo pipefail
+# Report a free development port. Never rewrite production configuration.
+python3 - <<'PY'
+import socket
+with socket.socket() as listener:
+    listener.bind(('127.0.0.1', 0))
+    print(listener.getsockname()[1])
+PY

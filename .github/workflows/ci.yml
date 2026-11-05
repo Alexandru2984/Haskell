@@ -1,34 +1,78 @@
 name: CI
-
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
-
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
-  build:
-    runs-on: ubuntu-latest
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: monitor_test
+          POSTGRES_PASSWORD: integration-only-password
+          POSTGRES_DB: monitor_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 5s --health-retries 10
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: haskell-actions/setup@v2
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: haskell-actions/setup@7fd2bb5ca789761088fbc831406b2910e47e56f1 # v2
         with:
           ghc-version: '9.4.7'
-          cabal-version: '3.14.2.0'
-
-      - name: Cache cabal store
-        uses: actions/cache@v4
+          cabal-version: '3.16.1.0'
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: System dependencies
+        run: sudo apt-get update && sudo apt-get install -y libpq-dev libgmp-dev zlib1g-dev binutils-gold
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             ~/.cabal/store
-            dist-newstyle
-          key: ${{ runner.os }}-ghc9.4.7-${{ hashFiles('**/*.cabal', 'cabal.project') }}
-          restore-keys: |
-            ${{ runner.os }}-ghc9.4.7-
-
-      - name: Build
-        run: cabal build all
-
-      - name: Test
-        run: cabal test all --test-show-details=direct
+            dist-review
+          key: ${{ runner.os }}-ghc9.4.7-${{ hashFiles('**/*.cabal', 'cabal.project', 'cabal.project.freeze') }}
+          restore-keys: ${{ runner.os }}-ghc9.4.7-
+      - name: Build and unit/security regressions
+        run: |
+          cabal update
+          cabal build all --enable-tests --builddir=dist-review -j4
+          cabal test all --builddir=dist-review --test-show-details=direct
+      - name: Check current Haskell security advisories
+        run: |
+          git clone --depth 1 https://github.com/haskell/security-advisories.git "$RUNNER_TEMP/haskell-advisories"
+          python3 scripts/audit_dependencies.py dist-review/cache/plan.json "$RUNNER_TEMP/haskell-advisories"
+      - name: Browser tooling
+        run: |
+          npm ci --ignore-scripts
+          npm audit --audit-level=high
+          npx playwright install --with-deps chromium
+      - name: Isolated integration, responsive and accessibility checks
+        env:
+          TEST_DATABASE_URL: postgresql://monitor_test:integration-only-password@127.0.0.1:5432/monitor_test
+          RUN_BROWSER_TESTS: '1'
+        run: python3 scripts/test_instance.py "$(cabal list-bin exe:api-contract-monitor --builddir=dist-review)"
+      - name: Syntax and patch checks
+        run: |
+          node --check public/assets/app.js
+          shellcheck scripts/*.sh
+          git diff --check
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: browser-and-integration-evidence
+          path: artifacts/
+          retention-days: 7
