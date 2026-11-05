@@ -13,7 +13,7 @@ securityHeaders :: Middleware
 securityHeaders application request respond = application request $ respond . mapResponseHeaders (headers ++)
   where
     headers =
-        [ ("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
+        [ ("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
         , ("X-Content-Type-Options", "nosniff"), ("X-Frame-Options", "DENY")
         , ("Referrer-Policy", "no-referrer"), ("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
         , ("Cache-Control", "no-store"), ("X-Robots-Tag", "noindex, nofollow") ]
