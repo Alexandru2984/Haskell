@@ -27,6 +27,7 @@ spec = do
                  , endpointMethod   = "GET"
                  , endpointStatus   = Unknown
                  , endpointEnabled  = True
+                 , endpointRevision = 0
                  , endpointContract = Null
                  }
       result <- checkEndpoint testConfig manager ep
@@ -37,7 +38,7 @@ spec = do
       testWithApplication (pure fixture) $ \port -> do
         manager <- newManager defaultManagerSettings
         let cfg = testConfig { allowPrivateTargets = True, maxResponseBytes = 1024 }
-            ep path = Endpoint 1 "fixture" "test" ("http://127.0.0.1:" <> T.pack (show port) <> path) "GET" Unknown True (object ["type" .= ("null" :: T.Text)])
+            ep path = Endpoint 1 "fixture" "test" ("http://127.0.0.1:" <> T.pack (show port) <> path) "GET" Unknown True (object ["type" .= ("null" :: T.Text)]) 0
         exact <- checkEndpoint cfg manager (ep "/exact")
         checkPassed exact `shouldBe` True
         slow <- checkEndpoint (cfg {timeoutSeconds = 1}) manager (ep "/slow")

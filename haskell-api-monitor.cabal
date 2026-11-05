@@ -25,6 +25,7 @@ library
         App.Validator
         App.Checker
         App.Scheduler
+        App.Monitor
         App.Security.UrlSafety
         App.Security.Web
         App.Reports
@@ -32,6 +33,7 @@ library
     build-depends:
         base ^>=4.17.2.0,
         async,
+        containers,
         servant-server,
         servant-lucid,
         lucid,

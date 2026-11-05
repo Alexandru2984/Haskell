@@ -30,6 +30,7 @@ import App.Types (Endpoint(..), Health(..), Status(..))
 import App.Html
 import App.Endpoint
 import App.Reports (globalStats, recentIncidents)
+import App.Monitor (newMonitorRuntime)
 import App.Scheduler
 import App.Logging
 
@@ -142,17 +143,8 @@ runServer = do
     pool <- mkPool cfg
     withResource pool runMigrations
 
-    -- Insert a sample if the db is empty just to show UI
-    count <- withResource pool $ \conn -> do
-        [Only c] <- query_ conn "SELECT COUNT(*) FROM endpoints" :: IO [Only Int]
-        return c
-    if count == 0
-        then do
-            logInfo "Inserting sample data..."
-            withResource pool insertSample
-        else return ()
-
-    startScheduler cfg pool
+    runtime <- newMonitorRuntime cfg
+    startScheduler cfg pool runtime
 
     let settings = setPort (appPort cfg)
                  $ setHost (fromString (appHost cfg))

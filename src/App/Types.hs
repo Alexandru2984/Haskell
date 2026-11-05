@@ -46,17 +46,18 @@ data Endpoint = Endpoint
     , endpointStatus :: Status
     , endpointEnabled :: Bool
     , endpointContract :: Value
+    , endpointRevision :: Int
     } deriving (Show, Generic)
 
 instance ToJSON Endpoint
 instance FromJSON Endpoint
 
 instance FromRow Endpoint where
-    fromRow = Endpoint <$> field <*> field <*> field <*> field <*> field <*> field <*> field <*> field
+    fromRow = Endpoint <$> field <*> field <*> field <*> field <*> field <*> field <*> field <*> field <*> field
 
 instance ToRow Endpoint where
-    toRow (Endpoint id' name proj url method status enabled contract) = 
-        toRow (id', name, proj, url, method, status, enabled, contract)
+    toRow (Endpoint id' name proj url method status enabled contract revision) =
+        toRow (id', name, proj, url, method, status, enabled, contract, revision)
 
 data CheckResult = CheckResult
     { checkId :: Int
@@ -86,3 +87,11 @@ instance ToJSON Health where
         , "endpoints" .= healthEndpoints h
         , "checks"    .= healthChecks h
         ]
+
+data Summary = Summary
+    { summaryTotal :: Int, summaryPassed :: Int
+    , summaryAverage :: Maybe Double, summaryP95 :: Maybe Double
+    } deriving (Show, Generic)
+instance FromRow Summary where
+    fromRow = Summary <$> field <*> field <*> field <*> field
+instance ToJSON Summary

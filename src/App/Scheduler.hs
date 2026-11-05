@@ -1,47 +1,51 @@
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 module App.Scheduler where
 
 import Control.Concurrent (threadDelay, forkIO)
-import Control.Concurrent.QSem (QSem, newQSem, waitQSem, signalQSem)
-import Control.Concurrent.Async (forConcurrently_)
-import Control.Exception (bracket_, try, SomeException)
-import Control.Monad (forever, void)
-import Database.PostgreSQL.Simple (Connection)
+import Control.Concurrent.Async (replicateConcurrently_)
+import Control.Exception (try, SomeException, SomeAsyncException, fromException, throwIO)
+import Control.Monad (forever, void, when)
+import Data.IORef
 import Data.Pool (Pool, withResource)
-import Network.HTTP.Client (Manager, newManager, managerSetProxy, noProxy, managerSetMaxHeaderLength, managerSetMaxNumberHeaders)
-import Network.HTTP.Client.TLS (tlsManagerSettings)
-import App.Types
-import App.Checker (checkEndpoint)
-import App.Endpoint (getEnabledEndpoints, setEndpointStatus)
-import App.Reports (insertCheckResult)
+import Database.PostgreSQL.Simple (Connection)
 import App.Config
+import App.Endpoint (getEnabledEndpoints)
+import App.Monitor
+import App.Reports (pruneHistory)
 import App.Logging
 
--- | Background loop: every @checkIntervalSeconds@ it fetches all enabled
--- endpoints and checks them concurrently (bounded by @maxConcurrentChecks@),
--- persisting each result and updating the endpoint's health.
-startScheduler :: AppConfig -> Pool Connection -> IO ()
-startScheduler cfg pool = void $ forkIO $ do
-    manager <- newManager (managerSetProxy noProxy (managerSetMaxHeaderLength 16384 (managerSetMaxNumberHeaders 64 tlsManagerSettings)))
-    forever $ do
-        endpoints <- withResource pool getEnabledEndpoints
-        logInfo $ "Scheduler tick: checking " ++ show (length endpoints) ++ " endpoint(s)"
-        sem <- newQSem (maxConcurrentChecks cfg)
-        forConcurrently_ endpoints (runOne cfg manager pool sem)
-        threadDelay (checkIntervalSeconds cfg * 1000000)
+-- Catch ordinary failures, never cancellation or timeout exceptions.
+trySync :: IO a -> IO (Either SomeException a)
+trySync action = do
+    result <- try action
+    case result of
+        Left e | Just (_ :: SomeAsyncException) <- fromException e -> throwIO e
+        _ -> pure result
 
-runOne :: AppConfig -> Manager -> Pool Connection -> QSem -> Endpoint -> IO ()
-runOne cfg manager pool sem ep =
-    bracket_ (waitQSem sem) (signalQSem sem) $ do
-        result <- try $ do
-            cr <- checkEndpoint cfg manager ep
-            withResource pool $ \conn -> do
-                insertCheckResult conn cr
-                setEndpointStatus conn (endpointId ep)
-                    (if checkPassed cr then Passing else Failing)
+startScheduler :: AppConfig -> Pool Connection -> MonitorRuntime -> IO ()
+startScheduler cfg pool runtime = void $ forkIO $ do
+    ticks <- newIORef (0 :: Int)
+    forever $ do
+        result <- trySync $ do
+            endpoints <- withResource pool getEnabledEndpoints
+            queue <- newIORef endpoints
+            let worker = do
+                    next <- atomicModifyIORef' queue $ \xs -> case xs of
+                        [] -> ([], Nothing)
+                        e:rest -> (rest, Just e)
+                    case next of
+                        Nothing -> pure ()
+                        Just endpoint -> do
+                            outcome <- trySync (runStoredCheck cfg pool runtime endpoint)
+                            case outcome of
+                                Left _ -> logError "Endpoint check could not be persisted; scheduler will retry next tick"
+                                Right _ -> pure ()
+                            worker
+            replicateConcurrently_ (maxConcurrentChecks cfg) worker
+            tick <- atomicModifyIORef' ticks (\n -> (n+1,n))
+            when (retentionDays cfg > 0 && tick `mod` 240 == 0) $
+                withResource pool (\conn -> pruneHistory conn (retentionDays cfg))
         case result of
-            Left (_ :: SomeException) ->
-                logError $ "Check failed for endpoint "
-                            ++ show (endpointId ep) ++ ": persistence or check failure"
-            Right () -> return ()
+            Left _ -> logError "Scheduler tick failed; retrying after the configured interval"
+            Right () -> pure ()
+        threadDelay (checkIntervalSeconds cfg * 1000000)

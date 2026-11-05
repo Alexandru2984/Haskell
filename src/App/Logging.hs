@@ -1,7 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 module App.Logging where
 
-import Control.Monad (when)
 import Data.Time (getCurrentTime)
 
 logInfo :: String -> IO ()

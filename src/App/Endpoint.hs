@@ -8,7 +8,7 @@ import Data.Aeson (Value)
 import qualified Data.Text as T
 
 endpointColumns :: Query
-endpointColumns = "id, name, project, url, method, status, enabled, contract"
+endpointColumns = "id, name, project, url, method, status, enabled, contract, revision"
 
 getEndpoints :: Connection -> IO [Endpoint]
 getEndpoints conn =
@@ -40,7 +40,7 @@ createEndpoint conn name project url method contract = do
 
 updateEndpoint :: Connection -> Int -> T.Text -> T.Text -> T.Text -> T.Text -> Value -> IO ()
 updateEndpoint conn eid name project url method contract = void $ execute conn
-    "UPDATE endpoints SET name = ?, project = ?, url = ?, method = ?, contract = ? \
+    "UPDATE endpoints SET name = ?, project = ?, url = ?, method = ?, contract = ?, status = 0, revision = revision + 1 \
     \ WHERE id = ?"
     (name, project, url, method, contract, eid)
 
@@ -53,10 +53,14 @@ setEndpointStatus :: Connection -> Int -> Status -> IO ()
 setEndpointStatus conn eid st =
     void $ execute conn "UPDATE endpoints SET status = ? WHERE id = ?" (st, eid)
 
-insertSample :: Connection -> IO ()
-insertSample conn = do
-    let contractStr = "{\"type\": \"object\", \"required\": {\"status\": {\"type\": \"string\"}}, \"allow_extra_fields\": true}" :: String
-    _ <- execute conn
-        "INSERT INTO endpoints (name, project, url, method, status, enabled, contract) VALUES (?, ?, ?, ?, ?, ?, ?)"
-        ("Sample API" :: String, "Demo" :: String, "https://haskell.micutu.com" :: String, "GET" :: String, 0 :: Int, True :: Bool, contractStr)
-    return ()
+-- Serialize quota checks with inserts; concurrent submissions cannot bypass the cap.
+createEndpointLimited :: Connection -> Int -> T.Text -> T.Text -> T.Text -> T.Text -> Value -> IO (Maybe Int)
+createEndpointLimited conn limit name project url method contract = withTransaction conn $ do
+    _ <- execute_ conn "LOCK TABLE endpoints IN SHARE ROW EXCLUSIVE MODE"
+    [Only count] <- query_ conn "SELECT count(*)::int FROM endpoints"
+    if count >= limit then pure Nothing
+    else Just <$> createEndpoint conn name project url method contract
+
+toggleEndpoint :: Connection -> Int -> IO ()
+toggleEndpoint conn eid = void $ execute conn
+    "UPDATE endpoints SET enabled = NOT enabled, status = 0, revision = revision + 1 WHERE id = ?" (Only eid)

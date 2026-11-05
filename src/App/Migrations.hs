@@ -5,7 +5,7 @@ import Database.PostgreSQL.Simple
 import App.Logging (logInfo)
 
 runMigrations :: Connection -> IO ()
-runMigrations conn = do
+runMigrations conn = withTransaction conn $ do
     logInfo "Running migrations..."
     _ <- execute_ conn "CREATE TABLE IF NOT EXISTS endpoints ( \
         \ id SERIAL PRIMARY KEY, \
@@ -26,4 +26,8 @@ runMigrations conn = do
         \ passed BOOLEAN NOT NULL, \
         \ errors JSONB NOT NULL \
         \ )"
+    _ <- execute_ conn "ALTER TABLE endpoints ADD COLUMN IF NOT EXISTS revision INT NOT NULL DEFAULT 0"
+    _ <- execute_ conn "CREATE INDEX IF NOT EXISTS check_results_time_idx ON check_results (check_time DESC, id DESC)"
+    _ <- execute_ conn "CREATE INDEX IF NOT EXISTS check_results_endpoint_time_idx ON check_results (endpoint_id, check_time DESC, id DESC)"
+    _ <- execute_ conn "CREATE INDEX IF NOT EXISTS check_results_failures_idx ON check_results (check_time DESC) WHERE passed = false"
     logInfo "Migrations complete."
