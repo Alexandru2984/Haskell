@@ -26,6 +26,7 @@ library
         App.Checker
         App.Scheduler
         App.Security.UrlSafety
+        App.Security.Web
         App.Reports
         App.Logging
     build-depends:
@@ -34,22 +35,23 @@ library
         servant-server,
         servant-lucid,
         lucid,
-        aeson,
+        aeson >=2.2.5.1,
         text,
         bytestring,
         time,
         postgresql-simple,
         resource-pool,
-        http-client,
+        http-client >=0.7.19,
         http-client-tls,
         http-types,
-        wai,
+        wai >=3.2.5,
         wai-extra,
-        warp,
+        warp >=3.4.17,
         unordered-containers,
         vector,
-        scientific,
+        scientific >=0.3.10.0,
         dotenv,
+        directory,
         http-api-data,
         network,
         network-uri
@@ -78,11 +80,17 @@ test-suite api-contract-monitor-test
         App.ValidatorSpec
         App.UrlSafetySpec
         App.CheckerSpec
+        App.WebSecuritySpec
+        App.ConfigSpec
     build-depends:
         base ^>=4.17.2.0,
+        wai >=3.2.5,
+        warp >=3.4.17,
+        http-types,
+        bytestring,
         hspec,
         QuickCheck,
-        aeson,
+        aeson >=2.2.5.1,
         text,
-        http-client,
+        http-client >=0.7.19,
         haskell-api-monitor

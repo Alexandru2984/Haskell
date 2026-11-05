@@ -19,6 +19,14 @@ Reviewed 2026-11-05. Scope: tracked application, Git history filenames, local ru
 | Low | Environment backup not ignored | Untracked `.env.bak-*` could be accidentally staged. No secret `.env` filenames found in reviewed Git history. | Fixed: `f2d4d45` |
 | Low | Build/deploy drift | README service name differs from `haskell-canary`; build toolchain absent on this VPS; legacy scripts hardcode a removed home path and build into running executable location. | Pending |
 
+## Dependency advisories confirmed
+
+The original build plan matches published advisories for Warp 3.4.14 (HSEC-2026-0013), aeson 2.2.5.0 and text-iso8601 0.1.1.1 (HSEC-2026-0007), and scientific 0.3.8.1 (HSEC-2026-0011). The candidate uses patched versions: Warp 3.4.20, aeson 2.2.5.1, text-iso8601 0.1.1.2 and scientific 0.3.10.0. Dependency floors prevent resolving the affected direct dependencies again.
+
+An automated comparison against 39 published Haskell advisories at database commit `9fa5787e33f5bb3d73f2a0db22b59fd10921d25f` found no unreviewed applicable matches in the candidate. The base `Numeric.readFloat` advisory remains a documented function-specific exception; application code does not use it. The old process package advisory is Windows-specific and does not apply to this Linux deployment. This scan covers published metadata, not unknown vulnerabilities or all possible transitive call paths.
+
+Twenty historical commits (82 unique blobs) were checked for private-key markers, GitHub/AWS token formats and non-placeholder PostgreSQL URL passwords; no matches were found. This is not proof that every conceivable secret format was absent.
+
 ## Existing controls verified
 
 - Application binds to 127.0.0.1:3060; Basic authentication is enabled and unauthenticated local requests receive 401.
@@ -40,3 +48,7 @@ Reviewed 2026-11-05. Scope: tracked application, Git history filenames, local ru
 - [OWASP SSRF Prevention](https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html)
 - [OWASP CSRF Prevention](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html)
 - [http-client Request and connection settings](https://hackage-content.haskell.org/package/http-client-0.7.19/docs/Network-HTTP-Client.html)
+
+## Application hardening verification
+
+35 Hspec examples passed, including local HTTP fixtures for invalid JSON, redirect refusal, HTTP errors, exact/oversized bodies, total deadlines, HEAD checks, strict contract definitions, origin spoofing, configuration bounds, special IP ranges and existing validator property tests. HTTP/browser and production verification are recorded in the delivery report after those stages.

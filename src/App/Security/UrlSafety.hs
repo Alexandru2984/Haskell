@@ -1,105 +1,76 @@
 {-# LANGUAGE OverloadedStrings #-}
-
--- | URL safety checks to mitigate SSRF.
---
--- Unlike a naive string-prefix check, this resolves the host via DNS and
--- validates every resolved IPv4/IPv6 address against private, loopback,
--- link-local, CGNAT, and reserved ranges. Blocking is conservative: if ANY
--- resolved address falls in a forbidden range (or resolution fails), the URL
--- is rejected. This defeats DNS-rebinding tricks where a public hostname
--- points at an internal address such as the cloud metadata endpoint.
 module App.Security.UrlSafety
-    ( isSafeUrl
-    , isPrivateIPv4
-    , isPrivateIPv6
-    ) where
+    ( isSafeUrl, resolveSafeAddress, validTargetUrl, isPrivateIPv4, isPrivateIPv6 ) where
 
-import Network.URI (parseURI, uriScheme, uriAuthority, uriRegName)
+import Network.URI (parseURI, uriScheme, uriFragment, uriAuthority, uriUserInfo, uriRegName, uriPort)
 import Network.Socket
-    ( getAddrInfo, defaultHints, AddrInfo(..), SockAddr(..)
-    , SocketType(Stream), hostAddressToTuple, hostAddress6ToTuple )
-import Control.Exception (try, SomeException)
+import Control.Exception (try, IOException)
 import Data.Bits (shiftR, (.&.))
-import Data.Char (toLower)
+import Data.Char (isControl, isSpace, isDigit)
 import Data.Word (Word8, Word16)
+import Text.Read (readMaybe)
 import qualified Data.Text as T
 
--- | Is this URL safe to fetch? Requires DNS resolution, hence 'IO'.
--- When @allowPrivate@ is 'True' the IP-range checks are skipped (still
--- requires a valid http/https URL).
+-- Parse the exact string that will reach http-client. Never trim one parser's input only.
+validTargetUrl :: T.Text -> Bool
+validTargetUrl txt = T.length txt <= 2048 && not (T.any (\c -> isControl c || isSpace c || c == '\\') txt)
+    && case parseURI (T.unpack txt) of
+        Just u -> uriScheme u `elem` ["http:", "https:"] && null (uriFragment u)
+            && case uriAuthority u of
+                Just a -> null (uriUserInfo a) && not (null (uriRegName a)) && validPort (uriPort a)
+                _ -> False
+        _ -> False
+  where
+    validPort "" = True
+    validPort (':' : xs) = not (null xs) && all isDigit xs && case readMaybe xs :: Maybe Int of
+        Just p -> p >= 1 && p <= 65535
+        _ -> False
+    validPort _ = False
+
 isSafeUrl :: Bool -> T.Text -> IO Bool
-isSafeUrl allowPrivate txt =
-    case parseURI (T.unpack (T.strip txt)) of
-        Nothing  -> return False
-        Just uri
-            | not (schemeOk (uriScheme uri)) -> return False
-            | otherwise -> case uriAuthority uri of
-                Nothing   -> return False
-                Just auth ->
-                    let host = stripBrackets (uriRegName auth)
-                    in if null host
-                        then return False
-                        else if allowPrivate
-                            then return True
-                            else do
-                                eaddrs <- try (resolve host)
-                                    :: IO (Either SomeException [SockAddr])
-                                case eaddrs of
-                                    Left _         -> return False
-                                    Right []       -> return False
-                                    Right addrs    -> return (all addrIsPublic addrs)
+isSafeUrl allowPrivate txt = either (const False) (const True) <$> resolveSafeAddress allowPrivate txt
 
-schemeOk :: String -> Bool
-schemeOk s = map toLower s `elem` ["http:", "https:"]
-
-stripBrackets :: String -> String
-stripBrackets s = case s of
-    ('[' : rest) -> takeWhile (/= ']') rest
-    _            -> s
-
-resolve :: String -> IO [SockAddr]
-resolve host = do
-    let hints = defaultHints { addrSocketType = Stream }
-    infos <- getAddrInfo (Just hints) (Just host) Nothing
-    return (map addrAddress infos)
+-- http-client's hostAddress pins an IPv4 address while retaining the original host for
+-- Host, TLS SNI and certificate validation. IPv6-only targets fail closed explicitly.
+resolveSafeAddress :: Bool -> T.Text -> IO (Either T.Text HostAddress)
+resolveSafeAddress allowPrivate txt
+    | not (validTargetUrl txt) = pure (Left "Use a valid HTTP(S) URL without credentials, spaces or fragments")
+    | otherwise = case parseURI (T.unpack txt) >>= uriAuthority of
+        Nothing -> pure (Left "Invalid URL")
+        Just authority -> do
+            let host = filter (`notElem` ("[]" :: String)) (uriRegName authority)
+            result <- try (getAddrInfo (Just defaultHints { addrSocketType = Stream }) (Just host) Nothing)
+                :: IO (Either IOException [AddrInfo])
+            pure $ case result of
+                Left _ -> Left "Target DNS resolution failed"
+                Right infos
+                    | null infos -> Left "Target DNS resolution returned no addresses"
+                    | not allowPrivate && not (all (addrIsPublic . addrAddress) infos) -> Left "Unsafe or private URL"
+                    | otherwise -> case [ip | AddrInfo { addrAddress = SockAddrInet _ ip } <- infos] of
+                        ip : _ -> Right ip
+                        [] -> Left "An IPv4-reachable target is required for pinned connections"
 
 addrIsPublic :: SockAddr -> Bool
-addrIsPublic (SockAddrInet  _ ha)     = not (isPrivateIPv4 (hostAddressToTuple ha))
-addrIsPublic (SockAddrInet6 _ _ ha6 _) = not (isPrivateIPv6 (hostAddress6ToTuple ha6))
-addrIsPublic _                        = False  -- unix/other: refuse
+addrIsPublic (SockAddrInet _ ip) = not (isPrivateIPv4 (hostAddressToTuple ip))
+addrIsPublic (SockAddrInet6 _ _ ip _) = not (isPrivateIPv6 (hostAddress6ToTuple ip))
+addrIsPublic _ = False
 
--- | IPv4 ranges that must never be probed.
 isPrivateIPv4 :: (Word8, Word8, Word8, Word8) -> Bool
-isPrivateIPv4 (a, b, _, _) =
-       a == 0                          -- 0.0.0.0/8   "this" network
-    || a == 10                         -- 10.0.0.0/8  private
-    || (a == 100 && b >= 64 && b <= 127) -- 100.64.0.0/10 CGNAT
-    || a == 127                        -- 127.0.0.0/8 loopback
-    || (a == 169 && b == 254)          -- 169.254.0.0/16 link-local + metadata
-    || (a == 172 && b >= 16 && b <= 31)  -- 172.16.0.0/12 private
-    || (a == 192 && b == 168)          -- 192.168.0.0/16 private
-    || (a == 198 && (b == 18 || b == 19)) -- 198.18.0.0/15 benchmark
-    || a >= 224                        -- 224.0.0.0/4 multicast + 240/4 reserved
+isPrivateIPv4 (a,b,c,_) = a `elem` [0,10,127] || a >= 224
+    || (a == 100 && b >= 64 && b <= 127)
+    || (a == 169 && b == 254) || (a == 172 && b >= 16 && b <= 31)
+    || (a == 192 && (b == 168 || (b == 0 && c `elem` [0,2]) || (b == 88 && c == 99)))
+    || (a == 198 && (b `elem` [18,19] || (b == 51 && c == 100)))
+    || (a == 203 && b == 0 && c == 113)
 
--- | IPv6 ranges that must never be probed.
-isPrivateIPv6 :: (Word16, Word16, Word16, Word16, Word16, Word16, Word16, Word16) -> Bool
-isPrivateIPv6 grp@(g0, g1, g2, g3, g4, g5, g6, g7)
-    | g0 == 0 && g1 == 0 && g2 == 0 && g3 == 0
-      && g4 == 0 && g5 == 0 && g6 == 0 && g7 <= 1 = True   -- :: and ::1
-    | g0 == 0 && g1 == 0 && g2 == 0 && g3 == 0
-      && g4 == 0 && g5 == 0xffff                  = isPrivateIPv4 (mappedV4 grp) -- ::ffff:a.b.c.d
-    | firstByte == 0xfc || firstByte == 0xfd      = True   -- fc00::/7 unique-local
-    | firstByte == 0xfe && (secondNibble == 0x8)  = True   -- fe80::/10 link-local
-    | firstByte == 0xff                           = True   -- ff00::/8 multicast
-    | otherwise                                   = False
-  where
-    firstByte    = fromIntegral (g0 `shiftR` 8) :: Word8
-    secondNibble = fromIntegral ((g0 `shiftR` 4) .&. 0xf) :: Word8
-
-mappedV4 :: (Word16, Word16, Word16, Word16, Word16, Word16, Word16, Word16)
-         -> (Word8, Word8, Word8, Word8)
-mappedV4 (_, _, _, _, _, _, g6, g7) =
-    ( fromIntegral (g6 `shiftR` 8)
-    , fromIntegral (g6 .&. 0xff)
-    , fromIntegral (g7 `shiftR` 8)
-    , fromIntegral (g7 .&. 0xff) )
+isPrivateIPv6 :: (Word16,Word16,Word16,Word16,Word16,Word16,Word16,Word16) -> Bool
+isPrivateIPv6 (a,b,c,d,e,f,g,h)
+    | (a,b,c,d,e,f) == (0,0,0,0,0,0xffff) =
+        isPrivateIPv4 (fromIntegral (g `shiftR` 8), fromIntegral g,
+                       fromIntegral (h `shiftR` 8), fromIntegral h)
+    -- Allow ordinary global unicast only. Refuse transition, documentation and special space.
+    | a .&. 0xe000 /= 0x2000 = True
+    | a == 0x2002 = True -- 6to4 embeds an IPv4 destination
+    | a == 0x2001 && (b < 0x0200 || b == 0x0db8) = True
+    | a == 0x3fff && b .&. 0xf000 == 0 = True -- documentation /20
+    | otherwise = False

@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 module App.Server where
 
-import Control.Monad (void)
+import qualified System.Timeout
 import Control.Monad.IO.Class (liftIO)
 import Network.Wai.Handler.Warp
     (runSettings, defaultSettings, setPort, setHost, setGracefulShutdownTimeout)
@@ -19,7 +19,9 @@ import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BC
-import qualified Data.ByteString.Lazy.Char8 as LBS
+import App.Security.Web
+import App.Security.UrlSafety (isSafeUrl)
+import App.Contract (validateDefinition)
 import App.Config
 import App.Db
 import App.Migrations
@@ -31,14 +33,14 @@ import App.Reports (globalStats, recentIncidents)
 import App.Scheduler
 import App.Logging
 
-server :: Pool Connection -> Server API
-server pool =
+server :: AppConfig -> Pool Connection -> Server API
+server cfg pool =
          liftIO dashboardH
     :<|> liftIO (endpointsHtml <$> withResource pool getEndpoints)
     :<|> return (endpointFormPage Nothing)
     :<|> editH pool
-    :<|> createH pool
-    :<|> updateH pool
+    :<|> createH cfg pool
+    :<|> updateH cfg pool
     :<|> deleteH pool
     :<|> liftIO incidentsH
     :<|> liftIO healthH
@@ -82,15 +84,17 @@ editH pool eid = do
     mep <- liftIO $ withResource pool (`getEndpointById` eid)
     maybe (throwError err404) (return . endpointFormPage . Just) mep
 
-createH :: Pool Connection -> EndpointForm -> Handler Redirect
-createH pool form = do
+createH :: AppConfig -> Pool Connection -> EndpointForm -> Handler Redirect
+createH cfg pool form = do
+    validateForm cfg form
     contract <- parseContractOrErr (efContract form)
     _ <- liftIO $ withResource pool $ \c ->
         createEndpoint c (efName form) (efProject form) (efUrl form) (efMethod form) contract
     redirectTo "/endpoints"
 
-updateH :: Pool Connection -> Int -> EndpointForm -> Handler Redirect
-updateH pool eid form = do
+updateH :: AppConfig -> Pool Connection -> Int -> EndpointForm -> Handler Redirect
+updateH cfg pool eid form = do
+    validateForm cfg form
     contract <- parseContractOrErr (efContract form)
     liftIO $ withResource pool $ \c ->
         updateEndpoint c eid (efName form) (efProject form) (efUrl form) (efMethod form) contract
@@ -107,11 +111,12 @@ redirectTo loc = return (addHeader loc NoContent)
 parseContractOrErr :: T.Text -> Handler Value
 parseContractOrErr txt =
     case eitherDecodeStrict (TE.encodeUtf8 txt) of
-        Right v -> return v
-        Left e  -> throwError err400 { errBody = LBS.pack ("Invalid contract JSON: " ++ e) }
+        Right v | null (validateDefinition v) -> return v
+                | otherwise -> throwError err400 { errBody = "Invalid contract definition: a supported type and valid nested schemas are required" }
+        Left _  -> throwError err400 { errBody = "Invalid contract JSON" }
 
 app :: AppConfig -> Pool Connection -> Application
-app cfg pool = authMiddleware cfg (serve api (server pool))
+app cfg pool = securityHeaders $ authMiddleware cfg $ protectWrites cfg $ serve api (server cfg pool)
 
 -- | Gate the whole app behind HTTP Basic auth when enabled in config.
 authMiddleware :: AppConfig -> Middleware
@@ -155,3 +160,15 @@ runServer = do
     logInfo $ "Listening on " ++ appHost cfg ++ ":" ++ show (appPort cfg)
 
     runSettings settings (app cfg pool)
+
+validateForm :: AppConfig -> EndpointForm -> Handler ()
+validateForm cfg form = do
+    let validText value limit = not (T.null (T.strip value)) && T.length value <= limit && not (T.any (\c -> c < ' ') value)
+    if not (validText (efName form) 120 && validText (efProject form) 120)
+        then throwError err400 { errBody = "Name and project must contain 1 to 120 printable characters" } else pure ()
+    if efMethod form `notElem` ["GET", "HEAD"]
+        then throwError err400 { errBody = "Monitoring supports read-only GET and HEAD requests" } else pure ()
+    if T.length (efContract form) > 32768
+        then throwError err400 { errBody = "Contract is too large (maximum 32 KiB)" } else pure ()
+    safe <- liftIO $ System.Timeout.timeout 3000000 (isSafeUrl (allowPrivateTargets cfg) (efUrl form))
+    if safe /= Just True then throwError err400 { errBody = "Target must resolve to public IPv4 addresses; private, reserved and invalid URLs are refused" } else pure ()

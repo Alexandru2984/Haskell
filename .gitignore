@@ -13,3 +13,9 @@ cabal.project.local
 *.dyn_o
 *~
 .DS_Store
+dist-review/
+artifacts/
+node_modules/
+__pycache__/
+*.pyc
+releases/

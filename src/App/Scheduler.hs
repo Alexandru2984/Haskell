@@ -9,7 +9,7 @@ import Control.Exception (bracket_, try, SomeException)
 import Control.Monad (forever, void)
 import Database.PostgreSQL.Simple (Connection)
 import Data.Pool (Pool, withResource)
-import Network.HTTP.Client (Manager, newManager)
+import Network.HTTP.Client (Manager, newManager, managerSetProxy, noProxy, managerSetMaxHeaderLength, managerSetMaxNumberHeaders)
 import Network.HTTP.Client.TLS (tlsManagerSettings)
 import App.Types
 import App.Checker (checkEndpoint)
@@ -23,7 +23,7 @@ import App.Logging
 -- persisting each result and updating the endpoint's health.
 startScheduler :: AppConfig -> Pool Connection -> IO ()
 startScheduler cfg pool = void $ forkIO $ do
-    manager <- newManager tlsManagerSettings
+    manager <- newManager (managerSetProxy noProxy (managerSetMaxHeaderLength 16384 (managerSetMaxNumberHeaders 64 tlsManagerSettings)))
     forever $ do
         endpoints <- withResource pool getEnabledEndpoints
         logInfo $ "Scheduler tick: checking " ++ show (length endpoints) ++ " endpoint(s)"
@@ -41,7 +41,7 @@ runOne cfg manager pool sem ep =
                 setEndpointStatus conn (endpointId ep)
                     (if checkPassed cr then Passing else Failing)
         case result of
-            Left (e :: SomeException) ->
+            Left (_ :: SomeException) ->
                 logError $ "Check failed for endpoint "
-                            ++ show (endpointId ep) ++ ": " ++ show e
+                            ++ show (endpointId ep) ++ ": persistence or check failure"
             Right () -> return ()

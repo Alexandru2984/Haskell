@@ -43,3 +43,13 @@ spec = do
       isPrivateIPv6 (0,0,0,0,0,0xffff,0xa9fe,0xa9fe) `shouldBe` True  -- ::ffff:169.254.169.254
     it "allows a public mapped IPv4" $
       isPrivateIPv6 (0,0,0,0,0,0xffff,0x0101,0x0101) `shouldBe` False  -- ::ffff:1.1.1.1
+    it "blocks the full IPv6 link-local range and transition addresses" $ do
+      isPrivateIPv6 (0xfe90,0,0,0,0,0,0,1) `shouldBe` True
+      isPrivateIPv6 (0xfebf,0,0,0,0,0,0,1) `shouldBe` True
+      isPrivateIPv6 (0x2002,0x7f00,1,0,0,0,0,1) `shouldBe` True
+      isPrivateIPv6 (0x2001,0xdb8,0,0,0,0,0,1) `shouldBe` True
+  describe "URL syntax" $ do
+    it "rejects credentials, fragments, malformed ports, whitespace and backslashes" $
+      map validTargetUrl ["https://u:p@example.com/", "https://example.com/#x", "http://example.com:99999/", " https://example.com/", "http://example.com/a b"] `shouldBe` replicate 5 False
+    it "blocks documentation and protocol-assignment IPv4" $
+      map isPrivateIPv4 [(192,0,0,1),(192,0,2,1),(198,51,100,1),(203,0,113,1)] `shouldBe` replicate 4 True

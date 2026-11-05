@@ -74,6 +74,16 @@ spec = do
           actual = object [ "xs" .= [Number 1, Number 2] ]
       validateContract expected actual `shouldBe` []
 
+    it "rejects unsupported schema types and unknown keywords" $ do
+      validateDefinition (object ["type" .= String "typo"]) `shouldSatisfy` (not . null)
+      validateDefinition (object ["type" .= String "object", "properties" .= object []]) `shouldSatisfy` (not . null)
+    it "validates enum, nullable and numeric bounds" $ do
+      validateContract (object ["type" .= String "string", "enum" .= [String "ok"]]) (String "bad") `shouldSatisfy` (not . null)
+      validateContract (object ["type" .= String "string", "nullable" .= True]) Null `shouldBe` []
+      validateContract (object ["type" .= String "number", "minimum" .= (5 :: Int)]) (Number 1) `shouldSatisfy` (not . null)
+    it "rejects inverted schema bounds" $
+      validateDefinition (object ["type" .= String "number", "minimum" .= (5 :: Int), "maximum" .= (1 :: Int)]) `shouldSatisfy` (not . null)
+
     it "accepts every required string field (property)" $ property $ \(keys :: [String]) ->
       let uniq      = dedupe (filter (not . T.null) (map T.pack keys))
           required  = object [ fromText k .= object ["type" .= String "string"] | k <- uniq ]
