@@ -57,4 +57,8 @@ Twenty historical commits (82 unique blobs) were checked for private-key markers
 
 The final candidate passed 35 Hspec examples, 50 isolated HTTP assertions and 37 browser assertions. Browser checks cover 320/375/768/1440 px, both themes, keyboard search, the playground, page overflow, browser errors and automated WCAG 2 AA checks on six views. Contrast and ARIA findings were corrected and the suite rerun successfully. Automated Chromium emulation does not establish compatibility with every physical device, Safari/Firefox, or complete manual accessibility compliance.
 
-PostgreSQL retention is opt-in (`RETENTION_DAYS=0` by default). Migrations add a revision column and indexes; they do not delete existing rows. Runtime verification and the remaining publication/access decisions are recorded in the delivery report.
+PostgreSQL retention is opt-in (`RETENTION_DAYS=0` by default). Migrations add a revision column and indexes; they do not delete existing rows. Runtime verification and the remaining publication/access decisions are recorded in [the delivery report](DELIVERY.md).
+
+## Proxy rollout notes
+
+The live nginx vhost now strips duplicate upstream security headers and emits one consistent strict policy, per-client read/write rate limits, a 128 KiB body limit, and `no-store, no-transform`. Production browser checks confirmed that Cloudflare no longer injects scripts into authenticated HTML. Cloudflare's managed robots feature still prepends zone-wide crawl/content-signal rules; the origin's disallow-all response, application authentication and noindex headers are documented separately rather than claiming the edge robots configuration was fully changed.
